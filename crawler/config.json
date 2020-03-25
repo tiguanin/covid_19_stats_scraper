@@ -1,3 +1,4 @@
 {
-  "database_url": ""
+  "database_url": "postgresql+psycopg2://postgres:newPass@84.201.164.123:5432/covid-2019",
+  "project_name": "crawler"
 }

@@ -1,12 +1,15 @@
+from datetime import datetime
+
 import sqlalchemy as db
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
+import crawler.parse_helper as helper
 from models.country import Country
 
 # TODO: вынести в config.json (а на будущее - в Jenkins)
 # FIXME: Вынести весь этот файл в отдельный модуль.
-ENGINE = db.create_engine("")
+ENGINE = db.create_engine(helper.config['database_url'])
 META = db.MetaData(ENGINE)
 country_statistics_table = db.Table('country_statistics', META,
                                     db.Column('id', db.BIGINT()),
@@ -18,11 +21,15 @@ country_statistics_table = db.Table('country_statistics', META,
                                     db.Column('total_recovered', db.Integer()),
                                     db.Column('active_cases', db.Integer()),
                                     db.Column('serious_critical', db.Integer()),
-                                    db.Column('total_cases_1m_pop', db.Integer()))
+                                    db.Column('total_cases_1m_pop', db.Float()),
+                                    db.Column('create_date', db.TIMESTAMP()),
+                                    db.Column('total_deaths_1m_pop', db.Float()),
+                                    )
 
 countries_table = db.Table('countries', META,
                            db.Column('id', db.BIGINT(), autoincrement=True),
-                           db.Column('name', db.VARCHAR('255'))
+                           db.Column('name', db.VARCHAR('255')),
+                           db.Column('create_date', db.TIMESTAMP())
                            )
 
 
@@ -38,7 +45,9 @@ def create_country_statistics(country_model):
         "total_recovered": country_model.total_recovered,
         "active_cases": country_model.active_cases,
         "serious_critical": country_model.serious_critical,
-        "total_cases_1m_pop": country_model.total_cases_1m_pop
+        "total_cases_1m_pop": country_model.total_cases_1m_pop,
+        "create_date": country_model.create_date,
+        "total_deaths_1m_pop": country_model.total_deaths_1m_pop
     }))
     session.commit()
 
@@ -54,14 +63,13 @@ def upsert_country_if_not_exists(country_name, country_model):
 
 
 def create_country_if_not_exits(country_name):
-    # ENGINE.execute("insert into countries (name) values ('{}')".format(country_name))
     Session = sessionmaker(bind=ENGINE)
     session = Session()
     session.execute(countries_table.insert().values({
-        "name": country_name
+        "name": country_name,
+        "create_date": datetime.now(tz=None)
     }))
     session.commit()
-
 
 
 def get_country_by_name(country_name):
@@ -77,6 +85,11 @@ def is_empty(result):
     else:
         return False
 
+def get_country_id_by_country_name(country_name):
+    result = get_country_by_name(country_name)
+    result = result.fetchall()
+    return result[0].id
+
 
 def get_country_id_by_name(country_name):
     proxy_result = get_country_by_name(country_name)
@@ -89,6 +102,9 @@ def get_country_id_by_name(country_name):
     elif len(result) == 0:
         print("Страна '{}' отсутствует. Производится создание данной страны".format(country_name))
         create_country_if_not_exits(country_name)
+        id = get_country_id_by_country_name(country_name)
+        return id
+
 
 
 def is_country_exists(country_name):
@@ -110,7 +126,9 @@ def dto_to_model(country_dto):
                             total_recovered=country_dto.total_recovered,
                             active_cases=country_dto.active_cases,
                             serious_critical=country_dto.serious_critical,
-                            total_cases_1m_pop=country_dto.total_cases_1m_pop)
+                            total_cases_1m_pop=country_dto.total_cases_1m_pop,
+                            create_date=datetime.now(tz=None),
+                            total_deaths_1m_pop=country_dto.total_deaths_1m_pop)
     return country_model
 
 
@@ -119,13 +137,12 @@ def parse_scrapped_countries_data(countries_dto_list):
     for country_dto in countries_dto_list:
         country_model = dto_to_model(country_dto)
         print('Checking on exists county: {}'.format(country_dto.country_name))
-        # upsert_country_if_not_exists(country_dto.country_name, country_model)
         if is_country_exists(country_dto.country_name):
             create_country_statistics(country_model)
             print('Statistics by {} successfully inserted'.format(country_dto.country_name))
         else:
             create_country_if_not_exits(country_dto.country_name)
-            id = get_country_id_by_name(country_dto.country_name)
+            id = get_country_id_by_country_name(country_dto.country_name)
             country_model.country_id = id
             create_country_statistics(country_model)
 

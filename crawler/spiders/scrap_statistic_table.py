@@ -13,11 +13,12 @@ class CovidGeoInfoSpider(scrapy.Spider):
         stats_table = response.css('#main_table_countries_today tbody tr')
         stats_by_countries = []
         for row in stats_table:
-            country_dto = CountryDTO(None, None, None, None, None, None, None, None, None)
+            country_dto = CountryDTO(None, None, None, None, None, None, None, None, None, None, None)
             index = 0
-            for td in row.css('td::text, a::text'):
-                parse_helper.get_data_from_cells(index=index, text=td.get(), country=country_dto)
-                index = index + 1
+            for td in row.css('td'):
+                if index <= 9:
+                    parse_helper.get_data_from_cells(index=index, text=td.css('::text').get(default=''), country=country_dto)
+                    index = index + 1
             stats_by_countries.append(country_dto)
         parse_scrapped_countries_data(stats_by_countries)
 
