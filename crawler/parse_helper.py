@@ -1,9 +1,3 @@
-import json
-
-with open("config.json", 'r') as f:
-    config = json.load(f)
-
-
 def get_data_from_cells(index, text, country):
     text = _text_preprocessing(index, text)
     print('INDEX: {}, TEXT: {}'.format(index, text))
@@ -28,14 +22,18 @@ def get_data_from_cells(index, text, country):
         country.total_cases_1m_pop = text
     elif index == 9:
         country.total_deaths_1m_pop = text
+    elif index == 10:
+        country.first_case_date = text
 
 
 def _text_preprocessing(index, text):
-    result = text.lstrip()
-    result = result.replace('+', '')
+    result = text.replace('+', '')
     if index == 8 or index == 9:
         result = result.replace(',', '.')
+    elif index == 10:
+        result = result.strip()
     else:
+        result = result.lstrip()
         result = result.replace('.', '')
         result = result.replace(',', '')
     if result == '':

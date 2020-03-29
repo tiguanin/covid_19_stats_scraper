@@ -1,15 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 import sqlalchemy as db
 from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
-import crawler.parse_helper as helper
+import crawler.config as conf
 from models.country import Country
 
-# TODO: вынести в config.json (а на будущее - в Jenkins)
-# FIXME: Вынести весь этот файл в отдельный модуль.
-ENGINE = db.create_engine(helper.config['database_url'])
+ENGINE = db.create_engine(conf.config['database_url'])
 META = db.MetaData(ENGINE)
 country_statistics_table = db.Table('country_statistics', META,
                                     db.Column('id', db.BIGINT()),
@@ -24,6 +22,7 @@ country_statistics_table = db.Table('country_statistics', META,
                                     db.Column('total_cases_1m_pop', db.Float()),
                                     db.Column('create_date', db.TIMESTAMP()),
                                     db.Column('total_deaths_1m_pop', db.Float()),
+                                    db.Column('first_case_date', db.VARCHAR(100))
                                     )
 
 countries_table = db.Table('countries', META,
@@ -47,7 +46,8 @@ def create_country_statistics(country_model):
         "serious_critical": country_model.serious_critical,
         "total_cases_1m_pop": country_model.total_cases_1m_pop,
         "create_date": country_model.create_date,
-        "total_deaths_1m_pop": country_model.total_deaths_1m_pop
+        "total_deaths_1m_pop": country_model.total_deaths_1m_pop,
+        "first_case_date": country_model.first_case_date
     }))
     session.commit()
 
@@ -85,6 +85,7 @@ def is_empty(result):
     else:
         return False
 
+
 def get_country_id_by_country_name(country_name):
     result = get_country_by_name(country_name)
     result = result.fetchall()
@@ -106,7 +107,6 @@ def get_country_id_by_name(country_name):
         return id
 
 
-
 def is_country_exists(country_name):
     result = get_country_by_name(country_name)
     res = result.fetchall()
@@ -117,6 +117,7 @@ def is_country_exists(country_name):
 
 
 def dto_to_model(country_dto):
+    moscow_current_datetime = _get_moscow_current_datetime
     country_id = get_country_id_by_name(country_dto.country_name)
     country_model = Country(country_id=country_id,
                             total_cases=country_dto.total_cases,
@@ -127,8 +128,9 @@ def dto_to_model(country_dto):
                             active_cases=country_dto.active_cases,
                             serious_critical=country_dto.serious_critical,
                             total_cases_1m_pop=country_dto.total_cases_1m_pop,
-                            create_date=datetime.now(tz=None),
-                            total_deaths_1m_pop=country_dto.total_deaths_1m_pop)
+                            create_date=moscow_current_datetime(),
+                            total_deaths_1m_pop=country_dto.total_deaths_1m_pop,
+                            first_case_date=country_dto.first_case_date)
     return country_model
 
 
@@ -142,7 +144,13 @@ def parse_scrapped_countries_data(countries_dto_list):
             print('Statistics by {} successfully inserted'.format(country_dto.country_name))
         else:
             create_country_if_not_exits(country_dto.country_name)
+            # FIXME: получать ключ созданной страны сразу после инсерта выше
+            # FIXME: сделать нормальный upsert-метод
             id = get_country_id_by_country_name(country_dto.country_name)
             country_model.country_id = id
             create_country_statistics(country_model)
 
+
+def _get_moscow_current_datetime():
+    utc_current_datetime = datetime.now(timezone.utc)
+    return utc_current_datetime + timedelta(hours=3)
